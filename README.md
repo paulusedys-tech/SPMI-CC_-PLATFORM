@@ -1,2 +1,2 @@
 # school-qa-landing-
-this is SPMI Canisius College Platform
+This is SPMI Canisius College Platform
