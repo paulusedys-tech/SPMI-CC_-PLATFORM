@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPMI Survey Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .upload-section {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+        }
+        
+        .upload-section:hover {
+            border-color: #007bff;
+        }
+        
+        .file-input {
+            margin: 15px 0;
+        }
+        
+        .btn {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .dashboard {
+            display: none;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .comments-list {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .comment-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: white;
+            border-radius: 4px;
+            border-left: 3px solid #28a745;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        
+        .error {
+            color: #dc3545;
+            text-align: center;
+            padding: 10px;
+            display: none;
+        }
+        
+        canvas {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SPMI Survey Analysis Dashboard</h1>
+        
+        <div class="upload-section">
+            <h2>Upload Survey Data</h2>
+            <p>Upload your Excel (XLS/XLSX) or CSV file to analyze survey results</p>
+            
+            <input type="file" id="fileInput" class="file-input" accept=".csv,.xls,.xlsx">
+            <br>
+            <button id="uploadBtn" class="btn">Upload and Analyze</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <p>Analyzing your survey data... Please wait.</p>
+        </div>
+        
+        <div class="error" id="errorMessage"></div>
+        
+        <div class="dashboard" id="dashboard">
+            <div class="section">
+                <h2>Survey Metadata</h2>
+                <div id="metadataInfo"></div>
+            </div>
+            
+            <div class="section">
+                <h2>Quantitative Analysis</h2>
+                <div id="quantitativeCharts">
+                    <canvas id="quantitativeChart"></canvas>
+                </div>
+                <div class="stats-grid" id="quantitativeStats"></div>
+            </div>
+            
+            <div class="section">
+                <h2>Qualitative Analysis (Comments)</h2>
+                <div id="qualitativeAnalysis"></div>
+            </div>
+            
+            <div class="section">
+                <h2>Data Preview</h2>
+                <div id="dataPreview"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('fileInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const loadingDiv = document.getElementById('loading');
+            const errorMessage = document.getElementById('errorMessage');
+            const dashboard = document.getElementById('dashboard');
+            
+            uploadBtn.addEventListener('click', function() {
+                const file = fileInput.files[0];
+                
+                if (!file) {
+                    showError('Please select a file to upload.');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('surveyFile', file);
+                
+                // Show loading, hide error and dashboard
+                loadingDiv.style.display = 'block';
+                errorMessage.style.display = 'none';
+                dashboard.style.display = 'none';
+                
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    loadingDiv.style.display = 'none';
+                    
+                    if (data.success) {
+                        displayResults(data);
+                    } else {
+                        showError(data.error || 'An error occurred during analysis.');
+                    }
+                })
+                .catch(error => {
+                    loadingDiv.style.display = 'none';
+                    showError('Error: ' + error.message);
+                });
+            });
+            
+            function showError(message) {
+                errorMessage.textContent = message;
+                errorMessage.style.display = 'block';
+            }
+            
+            function displayResults(result) {
+                // Display metadata
+                const metadataInfo = document.getElementById('metadataInfo');
+                metadataInfo.innerHTML = `
+                    <p><strong>Total Rows:</strong> ${result.analysis.metadata.totalRows}</p>
+                    <p><strong>Total Columns:</strong> ${result.analysis.metadata.totalColumns}</p>
+                    <p><strong>Numeric Columns:</strong> ${result.analysis.metadata.numericColumns.join(', ')}</p>
+                    <p><strong>Text Columns:</strong> ${result.analysis.metadata.textColumns.join(', ')}</p>
+                `;
+                
+                // Display quantitative analysis
+                displayQuantitativeAnalysis(result.analysis.quantitative);
+                
+                // Display qualitative analysis
+                displayQualitativeAnalysis(result.analysis.qualitative);
+                
+                // Display data preview
+                displayDataPreview(result.data);
+                
+                // Show dashboard
+                dashboard.style.display = 'block';
+            }
+            
+            function displayQuantitativeAnalysis(quantitative) {
+                const statsContainer = document.getElementById('quantitativeStats');
+                const chartCtx = document.getElementById('quantitativeChart').getContext('2d');
+                
+                if (Object.keys(quantitative).length === 0) {
+                    statsContainer.innerHTML = '<p>No quantitative data found in the survey.</p>';
+                    return;
+                }
+                
+                // Build statistics display
+                let statsHtml = '';
+                for (const [column, stats] of Object.entries(quantitative)) {
+                    statsHtml += `
+                        <div class="stat-card">
+                            <h3>${column}</h3>
+                            <p><strong>Count:</strong> ${stats.count}</p>
+                            <p><strong>Average:</strong> ${stats.average.toFixed(2)}</p>
+                            <p><strong>Min:</strong> ${stats.min}</p>
+                            <p><strong>Max:</strong> ${stats.max}</p>
+                            <p><strong>Median:</strong> ${stats.median.toFixed(2)}</p>
+                        </div>
+                    `;
+                }
+                statsContainer.innerHTML = statsHtml;
+                
+                // Create chart data
+                const labels = [];
+                const averages = [];
+                
+                for (const [column, stats] of Object.entries(quantitative)) {
+                    labels.push(column.substring(0, 20) + (column.length > 20 ? '...' : '')); // Truncate long names
+                    averages.push(Math.round(stats.average * 100) / 100); // Round to 2 decimals
+                }
+                
+                // Create bar chart
+                new Chart(chartCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Average Value',
+                            data: averages,
+                            backgroundColor: 'rgba(0, 123, 255, 0.6)',
+                            borderColor: 'rgba(0, 123, 255, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Average Values by Column'
+                            }
+                        }
+                    }
+                });
+            }
+            
+            function displayQualitativeAnalysis(qualitative) {
+                const container = document.getElementById('qualitativeAnalysis');
+                
+                if (Object.keys(qualitative).length === 0) {
+                    container.innerHTML = '<p>No qualitative data (text comments) found in the survey.</p>';
+                    return;
+                }
+                
+                let html = '';
+                for (const [column, analysis] of Object.entries(qualitative)) {
+                    html += `
+                        <div class="section">
+                            <h3>${column}</h3>
+                            <p><strong>Total Entries:</strong> ${analysis.totalEntries}</p>
+                            <p><strong>Non-empty Entries:</strong> ${analysis.nonEmptyEntries}</p>
+                            
+                            <h4>Sample Comments:</h4>
+                            <div class="comments-list">
+                    `;
+                    
+                    if (analysis.sampleComments.length > 0) {
+                        analysis.sampleComments.forEach(comment => {
+                            html += `<div class="comment-item">${escapeHtml(comment)}</div>`;
+                        });
+                    } else {
+                        html += '<p>No comments to display.</p>';
+                    }
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                container.innerHTML = html;
+            }
+            
+            function displayDataPreview(data) {
+                const container = document.getElementById('dataPreview');
+                
+                if (!data || data.length === 0) {
+                    container.innerHTML = '<p>No data to preview.</p>';
+                    return;
+                }
+                
+                // Create table header
+                const headers = Object.keys(data[0]);
+                let html = '<table style="width:100%; border-collapse: collapse;">';
+                
+                html += '<thead><tr>';
+                headers.forEach(header => {
+                    html += `<th style="border: 1px solid #ddd; padding: 8px; background-color: #f2f2f2;">${escapeHtml(header)}</th>`;
+                });
+                html += '</tr></thead>';
+                
+                html += '<tbody>';
+                // Show first 10 rows
+                data.slice(0, 10).forEach(row => {
+                    html += '<tr>';
+                    headers.forEach(header => {
+                        html += `<td style="border: 1px solid #ddd; padding: 8px;">${escapeHtml(String(row[header] || ''))}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                
+                if (data.length > 10) {
+                    html += `<p><em>Showing first 10 of ${data.length} rows</em></p>`;
+                }
+                
+                container.innerHTML = html;
+            }
+            
+            // Helper function to escape HTML
+            function escapeHtml(text) {
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                
+                return text.replace(/[&<>"']/g, m => map[m]);
+            }
+        });
+    </script>
+</body>
+</html>
